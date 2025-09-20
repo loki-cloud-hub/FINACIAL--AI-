@@ -1,13 +1,6 @@
 # app.py
 """
 FinanceAI — Streamlit single-file app (IBM Watson only)
-- Profile (sidebar)
-- Welcome quick-actions
-- Chat UI
-- Message classification
-- LLM inference via IBM Watsonx Granite
-- IBM Watson STT & TTS integration
-- Persistence via pandas
 """
 
 import streamlit as st
@@ -30,7 +23,7 @@ IBM_API_KEY = os.getenv("IBM_API_KEY")
 IBM_STT_URL = os.getenv("IBM_STT_URL")
 IBM_TTS_URL = os.getenv("IBM_TTS_URL")
 IBM_WATSONX_URL = os.getenv("IBM_WATSONX_URL", "https://us-south.ml.cloud.ibm.com")
-IBM_PROJECT_ID = os.getenv("IBM_PROJECT_ID")  # required for watsonx.ai
+IBM_PROJECT_ID = os.getenv("IBM_PROJECT_ID")
 
 # Validate config
 if not IBM_API_KEY:
@@ -72,7 +65,7 @@ def save_profile(profile: Profile):
 def load_messages() -> pd.DataFrame:
     if MESSAGES_PATH.exists():
         return pd.read_csv(MESSAGES_PATH)
-    return pd.DataFrame(columns=["id","timestamp","is_user","message","message_type"])
+    return pd.DataFrame(columns=["id", "timestamp", "is_user", "message", "message_type"])
 
 def save_message_row(row: Dict):
     df = load_messages()
@@ -100,7 +93,7 @@ def init_watsonx():
     if not (IBM_API_KEY and IBM_PROJECT_ID): return None
     creds = Credentials(url=IBM_WATSONX_URL, api_key=IBM_API_KEY)
     model = Model(
-        model_id="ibm/granite-3-3b-instruct",   # IBM hosted Granite
+        model_id="ibm/granite-3-3b-instruct",
         credentials=creds,
         project_id=IBM_PROJECT_ID
     )
@@ -115,9 +108,9 @@ watsonx_model = init_watsonx()
 # ---------------------------
 def determine_message_type(msg: str) -> str:
     m = msg.lower()
-    if any(k in m for k in ["budget","spending","expense"]): return "budget_summary"
-    if any(k in m for k in ["invest","stock","portfolio"]): return "investment_advice"
-    if any(k in m for k in ["tax","deduction","irs"]): return "tax_guidance"
+    if any(k in m for k in ["budget", "spending", "expense"]): return "budget_summary"
+    if any(k in m for k in ["invest", "stock", "portfolio"]): return "investment_advice"
+    if any(k in m for k in ["tax", "deduction", "irs"]): return "tax_guidance"
     return "text"
 
 def build_context(profile: Profile) -> str:
@@ -134,50 +127,71 @@ def call_granite(prompt: str) -> str:
         return f"Granite error: {e}"
 
 def watson_transcribe(file_bytes: bytes, content_type="audio/wav") -> str:
-    if not watson_stt: return "STT not configured"
+    if not watson_stt:
+        return "STT not configured"
     resp = watson_stt.recognize(audio=io.BytesIO(file_bytes), content_type=content_type).get_result()
     return " ".join([r["alternatives"][0]["transcript"] for r in resp.get("results", [])])
 
-def watson_speak(text: str) -> bytes:
-    if not watson_tts: return None
-    resp = watson_tts.synthesize(text, voice="en-US_AllisonV3Voice", accept="audio/wav").get_result()
-    return resp.content
-
 # ---------------------------
-# Streamlit UI
+# Page Navigation Logic
 # ---------------------------
-st.title("FinanceAI")
 
-# Sidebar Profile
-st.sidebar.header("Profile")
+if "page" not in st.session_state:
+    st.session_state.page = "profile"
+
 profile = load_profile()
-with st.sidebar.form("profile_form"):
-    profile.user_type = st.selectbox("I am a:", ["","student","professional"], index=1 if profile.user_type=="student" else 2 if profile.user_type=="professional" else 0)
-    profile.age = st.number_input("Age", 16, 120, profile.age or 25)
-    profile.monthly_income = st.number_input("Monthly Income", 0, 100000, profile.monthly_income or 0)
-    profile.current_debt = st.number_input("Current Debt", 0, 1000000, profile.current_debt or 0)
-    profile.has_emergency_fund = st.checkbox("Emergency Fund?", profile.has_emergency_fund)
-    profile.risk_tolerance = st.selectbox("Risk Tolerance", ["","conservative","moderate","aggressive"], index=(["conservative","moderate","aggressive"].index(profile.risk_tolerance)+1) if profile.risk_tolerance else 0)
-    goals = st.text_area("Goals (comma separated)", ",".join(profile.financial_goals or []))
-    profile.financial_goals = [g.strip() for g in goals.split(",") if g.strip()]
-    profile.profile_completed = st.checkbox("Profile completed", profile.profile_completed)
-    if st.form_submit_button("Save"):
-        save_profile(profile)
-        st.sidebar.success("Saved ✅")
 
-# Chat
-st.subheader("Chat")
-df = load_messages()
-for _, row in df.iterrows():
-    who = "You" if row.is_user else "FinanceAI"
-    st.markdown(f"**{who}:** {row.message}")
+# ---------------------------
+# Page 1: Profile Setup
+# ---------------------------
+if st.session_state.page == "profile":
+    st.title("Step 1: Set Up Your Profile")
 
-msg = st.text_area("Your message")
-if st.button("Send"):
-    ts = int(time.time())
-    msg_type = determine_message_type(msg)
-    save_message_row({"id":ts,"timestamp":ts,"is_user":True,"message":msg,"message_type":msg_type})
-    system_prompt = f"You are FinanceAI, a personal financial advisor.\n{build_context(profile)}\nUser: {msg}"
-    ai_text = call_granite(system_prompt)
-    save_message_row({"id":ts+1,"timestamp":ts+1,"is_user":False,"message":ai_text,"message_type":msg_type})
-    st.rerun()
+    with st.form("profile_form"):
+        profile.user_type = st.selectbox("I am a:", ["", "student", "professional"], index=1 if profile.user_type == "student" else 2 if profile.user_type == "professional" else 0)
+        profile.age = st.number_input("Age", 16, 120, profile.age or 25)
+        profile.monthly_income = st.number_input("Monthly Income", 0, 100000, profile.monthly_income or 0)
+        profile.current_debt = st.number_input("Current Debt", 0, 1000000, profile.current_debt or 0)
+        profile.has_emergency_fund = st.checkbox("Emergency Fund?", profile.has_emergency_fund)
+        profile.risk_tolerance = st.selectbox("Risk Tolerance", ["", "conservative", "moderate", "aggressive"],
+            index=(["conservative", "moderate", "aggressive"].index(profile.risk_tolerance) + 1) if profile.risk_tolerance else 0)
+        goals = st.text_area("Goals (comma separated)", ",".join(profile.financial_goals or []))
+        profile.financial_goals = [g.strip() for g in goals.split(",") if g.strip()]
+        profile.profile_completed = st.checkbox("Profile completed", profile.profile_completed)
+
+        if st.form_submit_button("Save & Continue"):
+            save_profile(profile)
+            if profile.profile_completed:
+                st.success("Profile saved ✅ Redirecting to FinanceAI...")
+                st.session_state.page = "chat"
+                st.rerun()
+            else:
+                st.warning("Please complete the profile before continuing.")
+
+# ---------------------------
+# Page 2: FinanceAI Chat
+# ---------------------------
+elif st.session_state.page == "chat":
+    if not profile.profile_completed:
+        st.warning("Please complete your profile first.")
+        st.session_state.page = "profile"
+        st.rerun()
+
+    st.title("FinanceAI — IBM Watson Granite + STT + TTS")
+    st.button("🔄 Edit Profile", on_click=lambda: st.session_state.update({"page": "profile"}))
+
+    st.subheader("Chat")
+    df = load_messages()
+    for _, row in df.iterrows():
+        who = "You" if row.is_user else "FinanceAI"
+        st.markdown(f"**{who}:** {row.message}")
+
+    msg = st.text_area("Your message")
+    if st.button("Send"):
+        ts = int(time.time())
+        msg_type = determine_message_type(msg)
+        save_message_row({"id": ts, "timestamp": ts, "is_user": True, "message": msg, "message_type": msg_type})
+        system_prompt = f"You are FinanceAI, a personal financial advisor.\n{build_context(profile)}\nUser: {msg}"
+        ai_text = call_granite(system_prompt)
+        save_message_row({"id": ts + 1, "timestamp": ts + 1, "is_user": False, "message": ai_text, "message_type": msg_type})
+        st.rerun()
