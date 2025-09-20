@@ -1,2 +1,2 @@
 # Finance-AI
-chat bot, The Financal advisor.
+Chat Bot, The Financal advisor.
