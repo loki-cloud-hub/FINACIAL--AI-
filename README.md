@@ -1,2 +1,2 @@
-# FINACIAL--AI-
-Zen hackathon
+# Finance-AI
+chat bot, The Financal advisor.
